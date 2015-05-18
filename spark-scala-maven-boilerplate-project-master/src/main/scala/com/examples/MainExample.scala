@@ -15,7 +15,7 @@ import breeze.linalg.SparseVector
 
 
 object MainExample {
-	val D = 2 // Number of dimensions
+	val D = 39 // Number of dimensions
 	val N = 1048576
 	val rand = new Random(42)
 
