@@ -151,8 +151,8 @@ def parseLineCriteoCSV_SV(line:String):DataPoint={
 		response+="\n"+line
 		sec=secTemp
 
-		val data = sc.textFile(pathToFiles)
-		data.zipWithIndex.filter(x => x._2 >= 1).map(x => x._1) 
+		var data = sc.textFile(pathToFiles)
+		data=data.zipWithIndex.filter(x => x._2 >= 1).map(x => x._1) 
 		//La valeur initiale du cout devrait être de 0,69314
 		//La valeur du gradient intial devrait être de (-0,1 ,-12, -11,26)
 		//La valeur du theta optimal devrait être (-25.16 , 0.2 , 0.2 )
