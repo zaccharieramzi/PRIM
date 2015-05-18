@@ -65,7 +65,7 @@ def parseLineCriteoCSV_DV(line:String):DataPoint={
 	val label = myArray(0)
 	//Get rid of first (label) and second (Id) element : 
 	var myArray2: Array[Double] = myArray.tail.tail.zipWithIndex.map{ x =>
-		myHashFunc(x._1, x._2, D)
+		myHashFunc(x._1, x._2, N)
 	}
 	return DataPoint(DenseVector(myArray2), label.toDouble)	
 }
@@ -78,7 +78,7 @@ def parseLineCriteoCSV_SV(line:String):DataPoint={
 	//Get rid of first (label) and second (Id) element : 
 	val myArray2: Array[(Int,Double)] = myArray.tail.tail.zipWithIndex
 		.filter(x => (x._1.isEmpty))
-		.map{ x => (x._2,myHashFunc(x._1, x._2, D))
+		.map{ x => (x._2,myHashFunc(x._1, x._2, N))
 	}
 	val (indices, values) = myArray2.unzip 
 	return DataPoint(new SparseVector(indices.toArray, values.toArray, 39), label.toDouble)	
