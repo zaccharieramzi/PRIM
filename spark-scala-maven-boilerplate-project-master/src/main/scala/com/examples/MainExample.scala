@@ -36,14 +36,16 @@ def parsePoint(line: String): DataPoint = {
 	}
 def myHashFunc(str1:String, idx:Int, mod:Int):Double={
 	if(str1.isEmpty){
-		return 0.	
-	}
+		return 0.0	
+	} 
 	else if(idx<13){ //L1-13
 		return ((str1+idx).toInt % mod).toDouble
 	}
 	else{ //C1-26
-		return (java.lang.Long.parseLong(str1 + idx,16) % mod).toDouble
-	}
+		var mystr = str1
+		if(mystr.length < 8) mystr = mystr.concat("00000000")
+		return (java.lang.Long.parseLong(mystr.substring(0,8) + idx,16) % mod).toDouble
+	} 
 }
 
 def completer(myArr:Array[String], myLength:Int):Array[String]={
@@ -115,8 +117,8 @@ def parseLineCriteoCSV_SV(line:String):DataPoint={
 
 	def main(arg: Array[String]) {
 	  
-	    var response = "Test n°"+arg(1)+" avec "+arg(2)+" executants."
-
+//	    var response = "Test n°"+arg(1)+" avec "+arg(2)+" executants."
+		var response = ""
 		var sec = System.currentTimeMillis()
 		var secStart = System.currentTimeMillis()
 		var line = "Time in millis at the start: "+sec
@@ -134,13 +136,13 @@ def parseLineCriteoCSV_SV(line:String):DataPoint={
 		response+="\n"+line
 		sec=secTemp
 		
-		val pathToFiles = arg(0)//"ex2data1.txt"
+		val pathToFiles = /*arg(0)*/ "train.tiny.csv"//"ex2data1.txt"
 		println("Le programme commence")
 		
 
-		val conf = new SparkConf().setAppName("test")//.setMaster("local")
+		val conf = new SparkConf().setAppName("test").setMaster("local")
 		println("Bonne mise en place du SparkConf")
-		conf.setMaster("yarn-client")
+		//conf.setMaster("yarn-client")
 		println("Bon set du master pour le SparkConf")
 		val sc = new SparkContext(conf)
 		println("Bonne mise en place du contexte spark")
@@ -169,12 +171,14 @@ def parseLineCriteoCSV_SV(line:String):DataPoint={
 		response+="\n"+line
 		sec=secTemp
 		
-		val ITERATIONS = 1000
+		val ITERATIONS = 50
 		val n = points.count()
 		val nor: Double = 1.0 / (n - 1)
 		var lips = points.map(p => p.x.dot(p.x)).reduce(_ + _)
 		lips = lips * 4 * nor
 		val pasIdeal = 1.0 / lips
+		
+		println(pasIdeal)
 		
 		secTemp = System.currentTimeMillis()
 		line="On calcule le pas idéal en "+(secTemp-sec)+" millisecondes"
@@ -194,8 +198,9 @@ def parseLineCriteoCSV_SV(line:String):DataPoint={
 		sec=secTemp
 		
 		val nfolds = 5
-		val idx = List.range(0,n)
-		util.Random.shuffle(idx)
+		var idx = List.range(0,n)
+		idx=util.Random.shuffle(idx)
+		
 		
 		secTemp = System.currentTimeMillis()
 		line="On finit l'initialisation en "+(secTemp-secStart)+" millisecondes"
@@ -214,6 +219,8 @@ def parseLineCriteoCSV_SV(line:String):DataPoint={
 			  fold = fold++List[Int](id)
 			  
 			}
+			
+			
 			var numberOfMistakes: Int = 0
 			//Ici on commence la boucle qui permet de calculer le classifieur
 			
@@ -224,12 +231,14 @@ def parseLineCriteoCSV_SV(line:String):DataPoint={
 				p.x * ((hypothesis(w, p.x) - p.y) * nor *(1-ind(fold,k.toInt)) )
 				}.reduce(_ + _) 
 				w -= gradient * pasIdeal
+				
 
 			}
 			val indexKey = pointsWithIndex.map { case (k, v) => (v, k) }
 			for (s<-1 to ((n/nfolds)-1).toInt){
-			val dataToTest = indexKey.lookup(fold.apply(s-1)) 
-			if (decision(hypothesis(w, dataToTest(0).x)) != dataToTest(0).y) numberOfMistakes += 1
+				val dataToTest = indexKey.lookup(fold.apply(s-1))
+				println(fold.apply(s-1))
+				if (decision(hypothesis(w, dataToTest(0).x)) != dataToTest(0).y) numberOfMistakes += 1
 			}
 			
 		println("For the "+j+"th fold we have "+numberOfMistakes+" mistakes")	
@@ -249,10 +258,10 @@ def parseLineCriteoCSV_SV(line:String):DataPoint={
 		println(line)
 		response+="\n"+line
 		
-		val writer = new PrintWriter(new File("test"+arg(1)+"_"+arg(2)+".txt" ))
-
-        writer.write(response)
-        writer.close()
+//		val writer = new PrintWriter(new File("test"+arg(1)+"_"+arg(2)+".txt" ))
+//
+//        writer.write(response)
+//        writer.close()
 		
 		
 	}
