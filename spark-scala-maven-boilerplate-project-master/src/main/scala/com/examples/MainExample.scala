@@ -46,6 +46,18 @@ def myHashFunc(str1:String, idx:Int, mod:Int):Double={
 	}
 }
 
+def completer(myArr:Array[String], myLength:Int):Array[String]={
+	var myArray = myArr
+	if(myArray.length < myLength){
+		val missing:Int = (myLength - myArray.length)
+		require(missing >= 1)
+		for (i <- 1 to missing){ //On complete avec des valeurs ""
+			myArray :+= ""		
+		}
+	}
+	return myArray
+}
+
 def parseLineCriteoCSV_DV(line:String):DataPoint={
 	//Assuming that the first line was removed.
 	var myArray = line.split(',')
