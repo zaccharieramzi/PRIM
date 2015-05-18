@@ -64,7 +64,7 @@ def parseLineCriteoCSV_DV(line:String):DataPoint={
 	//Assuming that the first line was removed.
 	var myArray = line.split(',')
 	myArray = completer(myArray, 41)
-	val label = myArray(0)
+	val label = myArray(1)
 	//Get rid of first (label) and second (Id) element : 
 	var myArray2: Array[Double] = myArray.tail.tail.zipWithIndex.map{ x =>
 		myHashFunc(x._1, x._2, N)
@@ -76,7 +76,7 @@ def parseLineCriteoCSV_SV(line:String):DataPoint={
 	//Assuming that the first line was removed.
 	var myArray = line.split(',')
 	myArray = completer(myArray, 41)
-	val label = myArray(0)
+	val label = myArray(1)
 	//Get rid of first (label) and second (Id) element : 
 	val myArray2: Array[(Int,Double)] = myArray.tail.tail.zipWithIndex
 		.filter(x => (x._1.isEmpty))
@@ -171,12 +171,13 @@ def parseLineCriteoCSV_SV(line:String):DataPoint={
 		response+="\n"+line
 		sec=secTemp
 		
-		val ITERATIONS = 50
+		val ITERATIONS = 100
 		val n = points.count()
 		val nor: Double = 1.0 / (n - 1)
 		var lips = points.map(p => p.x.dot(p.x)).reduce(_ + _)
 		lips = lips * 4 * nor
 		val pasIdeal = 1.0 / lips
+		val pas = java.lang.Math.pow(10,-9)
 		
 		println(pasIdeal)
 		
@@ -190,6 +191,7 @@ def parseLineCriteoCSV_SV(line:String):DataPoint={
 		// Initialize w to a random value
 		var w = DenseVector.fill(D+1){0.0}
 		val pointsWithIndex = points.zipWithIndex //On attribue un indice à chaque point
+		println(pointsWithIndex.first)
 		
 		secTemp = System.currentTimeMillis()
 		line="On indice les données en "+(secTemp-sec)+" millisecondes"
@@ -237,7 +239,6 @@ def parseLineCriteoCSV_SV(line:String):DataPoint={
 			val indexKey = pointsWithIndex.map { case (k, v) => (v, k) }
 			for (s<-1 to ((n/nfolds)-1).toInt){
 				val dataToTest = indexKey.lookup(fold.apply(s-1))
-				println(fold.apply(s-1))
 				if (decision(hypothesis(w, dataToTest(0).x)) != dataToTest(0).y) numberOfMistakes += 1
 			}
 			
