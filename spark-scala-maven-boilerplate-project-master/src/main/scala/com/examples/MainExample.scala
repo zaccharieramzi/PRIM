@@ -37,8 +37,11 @@ def parsePoint(line: String): DataPoint = {
 def myHashFunc(str1:String, idx:Int, mod:Int):Double={
 	if(str1.isEmpty){
 		return 0.0	
-	} 
-	else if(idx<13){ //L1-13
+	}
+	else if(idx==0){
+	  return 1.0
+	}
+	else if(idx<14){ //L1-13
 		return ((str1+idx).toInt % mod).toDouble
 	}
 	else{ //C1-26
@@ -60,30 +63,78 @@ def completer(myArr:Array[String], myLength:Int):Array[String]={
 	return myArray
 }
 
+
+/**
+ * Parsage pour train.tiny.csv avec des DenseVector
+ */
 def parseLineCriteoCSV_DV(line:String):DataPoint={
 	//Assuming that the first line was removed.
 	var myArray = line.split(',')
 	myArray = completer(myArray, 41)
 	val label = myArray(1)
 	//Get rid of first (label) and second (Id) element : 
-	var myArray2: Array[Double] = myArray.tail.tail.zipWithIndex.map{ x =>
+	var myArray2: Array[Double] = ("1"+:myArray.tail.tail).zipWithIndex.map{ x =>
 		myHashFunc(x._1, x._2, N)
 	}
-	return DataPoint(DenseVector(1.0 +: myArray2), label.toDouble)	
+	return DataPoint(DenseVector(myArray2), label.toDouble)	
 }
 
+/**
+ * Parsage pour train.tiny.csv avec des SparseVector
+ */
 def parseLineCriteoCSV_SV(line:String):DataPoint={
 	//Assuming that the first line was removed.
 	var myArray = line.split(',')
 	myArray = completer(myArray, 41)
 	val label = myArray(1)
 	//Get rid of first (label) and second (Id) element : 
-	val myArray2: Array[(Int,Double)] = myArray.tail.tail.zipWithIndex
-		.filter(x => (x._1.isEmpty))
+	val myArray2: Array[(Int,Double)] = ("1"+:myArray.tail.tail).zipWithIndex
+		.filter(x => if (x._2 >0 && x._2 < 14){
+		  !(x._1.isEmpty) && !(x._1.toInt==0)
+		}
+		else{
+		  !(x._1.isEmpty)
+		})
 		.map{ x => (x._2,myHashFunc(x._1, x._2, N))
 	}
 	val (indices, values) = myArray2.unzip 
-	return DataPoint(new SparseVector(indices.toArray, values.toArray, 39), label.toDouble)	
+	return DataPoint(new SparseVector(indices.toArray, values.toArray, 40), label.toDouble)	
+}
+
+/**
+ * Parsage pour train.txt avec des DenseVector
+ */
+def parseLineCriteoTrain_DV(line:String):DataPoint={
+	//Assuming that the first line was removed.
+	var myArray = line.split('\t')
+	myArray = completer(myArray, 40)
+	val label = myArray(0)
+	//Get rid of first (label) and second (Id) element : 
+	val myArray2: Array[Double] = ("1"+:myArray.tail).zipWithIndex.map{ x =>
+		myHashFunc(x._1, x._2, N)
+	}
+	return DataPoint(DenseVector(myArray2), label.toDouble)	
+}
+
+/**
+ * Parsage pour train.txt avec des SparseVector
+ */
+def parseLineCriteoTrain_SV(line:String):DataPoint={
+	//Assuming that the first line was removed.
+	var myArray = line.split('\t')
+	myArray = completer(myArray, 40)
+	val label = myArray(0)
+	//Get rid of first (label) and second (Id) element : 
+	val myArray2: Array[(Int,Double)] = ("1"+:myArray.tail).zipWithIndex
+		.filter(x => if (x._2 >0 && x._2 < 14){
+		  !(x._1.isEmpty) && !(x._1.toInt==0)
+		}
+		else{
+		  !(x._1.isEmpty)
+		})
+		.map{ x => (x._2,myHashFunc(x._1, x._2, N))}
+	val (indices, values) = myArray2.unzip 
+	return DataPoint(new SparseVector(indices.toArray, values.toArray, 40), label.toDouble)	
 }
 
 
@@ -164,7 +215,6 @@ def parseLineCriteoCSV_SV(line:String):DataPoint={
 		sec=secTemp
 
 		val points = data.map(parseLineCriteoCSV_DV _).cache()
-		
 		secTemp = System.currentTimeMillis()
 		line="On parse les données en "+(secTemp-sec)+" millisecondes"
 		println(line)
