@@ -164,7 +164,7 @@ def parseLineCriteoCSV_SV(line:String):DataPoint={
 		response+="\n"+line
 		sec=secTemp
 
-		val points = data.map(parsePoint _).cache()
+		val points = data.map(parseLineCriteoCSV_DV _).cache()
 		
 		secTemp = System.currentTimeMillis()
 		line="On parse les données en "+(secTemp-sec)+" millisecondes"
