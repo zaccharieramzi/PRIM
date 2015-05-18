@@ -153,9 +153,6 @@ def parseLineCriteoCSV_SV(line:String):DataPoint={
 
 		var data = sc.textFile(pathToFiles)
 		data=data.zipWithIndex.filter(x => x._2 >= 1).map(x => x._1) 
-		//La valeur initiale du cout devrait être de 0,69314
-		//La valeur du gradient intial devrait être de (-0,1 ,-12, -11,26)
-		//La valeur du theta optimal devrait être (-25.16 , 0.2 , 0.2 )
 		println("Bon chargement des données")
 		
 		secTemp = System.currentTimeMillis()
@@ -172,7 +169,7 @@ def parseLineCriteoCSV_SV(line:String):DataPoint={
 		response+="\n"+line
 		sec=secTemp
 		
-		val ITERATIONS = 10
+		val ITERATIONS = 1000
 		val n = points.count()
 		val nor: Double = 1.0 / (n - 1)
 		var lips = points.map(p => p.x.dot(p.x)).reduce(_ + _)
@@ -187,7 +184,7 @@ def parseLineCriteoCSV_SV(line:String):DataPoint={
 		
 		
 		// Initialize w to a random value
-		var w = DenseVector.fill(D+1){2.0 * rand.nextDouble - 1.0}
+		var w = DenseVector.fill(D+1){0.0}
 		val pointsWithIndex = points.zipWithIndex //On attribue un indice à chaque point
 		
 		secTemp = System.currentTimeMillis()
