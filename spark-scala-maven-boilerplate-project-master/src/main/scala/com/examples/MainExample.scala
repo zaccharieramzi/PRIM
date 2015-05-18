@@ -67,7 +67,7 @@ def parseLineCriteoCSV_DV(line:String):DataPoint={
 	var myArray2: Array[Double] = myArray.tail.tail.zipWithIndex.map{ x =>
 		myHashFunc(x._1, x._2, N)
 	}
-	return DataPoint(DenseVector(myArray2), label.toDouble)	
+	return DataPoint(DenseVector(1.0 +: myArray2), label.toDouble)	
 }
 
 def parseLineCriteoCSV_SV(line:String):DataPoint={
