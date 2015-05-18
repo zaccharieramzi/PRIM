@@ -61,10 +61,11 @@ def completer(myArr:Array[String], myLength:Int):Array[String]={
 def parseLineCriteoCSV_DV(line:String):DataPoint={
 	//Assuming that the first line was removed.
 	var myArray = line.split(',')
+	myArray = completer(myArray, 41)
 	val label = myArray(0)
 	//Get rid of first (label) and second (Id) element : 
 	var myArray2: Array[Double] = myArray.tail.tail.zipWithIndex.map{ x =>
-		myHashFunc(x._1, x._2, N)
+		myHashFunc(x._1, x._2, D)
 	}
 	return DataPoint(DenseVector(myArray2), label.toDouble)	
 }
@@ -72,11 +73,12 @@ def parseLineCriteoCSV_DV(line:String):DataPoint={
 def parseLineCriteoCSV_SV(line:String):DataPoint={
 	//Assuming that the first line was removed.
 	var myArray = line.split(',')
+	myArray = completer(myArray, 41)
 	val label = myArray(0)
 	//Get rid of first (label) and second (Id) element : 
 	val myArray2: Array[(Int,Double)] = myArray.tail.tail.zipWithIndex
 		.filter(x => (x._1.isEmpty))
-		.map{ x => (x._2,myHashFunc(x._1, x._2, N))
+		.map{ x => (x._2,myHashFunc(x._1, x._2, D))
 	}
 	val (indices, values) = myArray2.unzip 
 	return DataPoint(new SparseVector(indices.toArray, values.toArray, 39), label.toDouble)	
