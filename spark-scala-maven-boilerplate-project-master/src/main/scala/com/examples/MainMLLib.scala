@@ -189,10 +189,12 @@ def parsePoint(line: String): DataPoint = {
 		val training = splits(0).cache()
 		val test = splits(1)
 		
+		println("Bon chargement des données")
 		
 		sec = System.currentTimeMillis()
 		val n = training.count()
 		val tpsCache = System.currentTimeMillis() - sec
+		println("Temps de Cache :" + tpsCache)
 		
 		strToWrite += n + "\t" + tpsCache + "\t"
 
