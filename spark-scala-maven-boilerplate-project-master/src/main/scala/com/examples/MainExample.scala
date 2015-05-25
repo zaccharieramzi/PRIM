@@ -17,6 +17,7 @@ import org.apache.spark.mllib.rdd.RDDFunctions._
 import org.apache.commons.collections.Buffer
 import java.io.BufferedWriter
 import java.io.FileWriter
+import org.apache.spark.partial.MeanEvaluator
 //import com.github.fommil.netlib.{NativeSystemBLAS, NativeRefBLAS}
 
 object MainExample {
@@ -212,19 +213,21 @@ def parseLineCriteoTrain_SV(line:String):DataPoint={
 	  	}
 	  return (cumGradient, loss)
 	}
-	
+
+
 	/**
-	 * @param str : String to write
-	 * @param file: path to file (to write in)
-	 * 
-	 * Writing Format : Tab separated value
-	 * Numero_du_test	nb_Executants	pourcentDuDataset	Nb_Itérations	sampleSize	TempsCount_Cache	TempsMoyItération	TempsTot
+	 * @return : Writes in file arg(7) -> tsv format
+	 * #Test
+	 * #executants
+	 * percentTraining
+	 * #Iteration
+	 * miniBatchSize
+	 * Count_Cache
+	 * TpsMoySGD
+	 * Score
+	 * TpsScore
+	 * TpsTot
 	 */
-	def myWritingFunc(str: String, file:String):Unit={
-	  
-	}
-
-
 	def main(arg: Array[String]) {
 	  /*
 	   * Usage : 
@@ -236,6 +239,7 @@ def parseLineCriteoTrain_SV(line:String):DataPoint={
 	   * arg5 = miniBatchSize (entre 0 et 1)
 	   * arg6 = pas
 	   * arg7 = pathTofileToWrite
+	   * arg8 = path to conf file
 	   */
 		
 		var strToWrite = arg(1)+ "\t" + arg(2) + "\t" + arg(3) + "\t" + arg(4) + "\t" + arg(5) + "\t"
@@ -244,7 +248,7 @@ def parseLineCriteoTrain_SV(line:String):DataPoint={
 		println("Time in millis at the start: "+sec)
 		
 		//TO CHANGE : path to conf file
-		PropertyConfigurator.configure("/home/martin/spark-1.2.0/conf/log4j.properties")		
+		PropertyConfigurator.configure(arg(8))		
 		println("On choisit le bon fichier de configuration pour le logger")
 		
 		
@@ -287,10 +291,10 @@ def parseLineCriteoTrain_SV(line:String):DataPoint={
 		require(n * sampleSize >= 1, s"Size of sample too small : got $sampleSize for $n training examples" )
 		
 		/**
-		 * TODO/TO Try: gradient = sc.aggregate ? 
+		 * TODO/TOTry: gradient = sc.aggregate ? 
 		 */
 		for (i <- 1 to ITERATIONS) {
-		  println("Debut de l'iteration " + i)
+		  println("Debut de l'iteration : " + i)
 		  val secDebutIter = System.currentTimeMillis()
 		  
 		  //Broadcast the weights vector :
@@ -335,17 +339,32 @@ def parseLineCriteoTrain_SV(line:String):DataPoint={
 		//Adding Temps Moyen Iteration : 
 		strToWrite += timeHistory.reduce(_+_)/ITERATIONS.toDouble + "\t"
 
+		//Prediction sur test :
+		sec = System.currentTimeMillis()
+		val (nbBon, tot) =  test.map(p => (if(decision(hypothesis(w, p.x))==p.y) 1 else 0, 1)).reduce((a,b) => (a._1+ b._1, a._2+b._2))
+		val score = nbBon.toDouble / tot
+		
+		//Adding the score and time of scoring !
+		strToWrite += score +"\t" + java.lang.String.valueOf(System.currentTimeMillis()-sec)+ "\t"
+		
 		sc.stop()
 		
 		//Total time of program
 		val totalTime = System.currentTimeMillis()-secStart
 		strToWrite += totalTime
 		
+		//Write to file
 		val writer = new PrintWriter(new BufferedWriter(new FileWriter(arg.last, true)))
 		
 		
-        writer.write(strToWrite)
+        writer.println(strToWrite)
         writer.close()
+        
+        // Write loss and Time history to another file
+        val writer2 = new PrintWriter(new BufferedWriter(new FileWriter(arg(1)+"_"+arg(2)+"loss"+arg.last, true)))
+        writer2.println(lossHistory.mkString("\t")+"\tTIME\t"+timeHistory.mkString("\t"))
+        writer2.close()
+        
 		
 		
 	}
