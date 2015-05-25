@@ -247,14 +247,13 @@ def parseLineCriteoTrain_SV(line:String):DataPoint={
 		val secStart = System.currentTimeMillis()
 		println("Time in millis at the start: "+sec)
 		
-		//TO CHANGE : path to conf file
 		PropertyConfigurator.configure(arg(8))		
 		println("On choisit le bon fichier de configuration pour le logger")
 		
 		
 		val pathToFiles = arg(0)		
 		val conf = new SparkConf().setAppName("SGD test on Criteo Dataset")
-		conf.setMaster("local[*]")
+		//conf.setMaster("local[4]")
 		val sc = new SparkContext(conf)
 	    println("Bonne mise en place du SparkContext")
 
@@ -347,24 +346,19 @@ def parseLineCriteoTrain_SV(line:String):DataPoint={
 		//Adding the score and time of scoring !
 		strToWrite += score +"\t" + java.lang.String.valueOf(System.currentTimeMillis()-sec)+ "\t"
 		
-		sc.stop()
+		
 		
 		//Total time of program
 		val totalTime = System.currentTimeMillis()-secStart
-		strToWrite += totalTime
+		strToWrite += totalTime+"\t"
 		
 		//Write to file
 		val writer = new PrintWriter(new BufferedWriter(new FileWriter(arg.last, true)))
 		
 		
-        writer.println(strToWrite)
+        writer.println(strToWrite+"LOSS"+lossHistory.mkString("\t")+"\tTIME\t"+timeHistory.mkString("\t"))
         writer.close()
-        
-        // Write loss and Time history to another file
-        val writer2 = new PrintWriter(new BufferedWriter(new FileWriter(arg(1)+"_"+arg(2)+"loss"+arg.last, true)))
-        writer2.println(lossHistory.mkString("\t")+"\tTIME\t"+timeHistory.mkString("\t"))
-        writer2.close()
-        
+        sc.stop()
 		
 		
 	}
