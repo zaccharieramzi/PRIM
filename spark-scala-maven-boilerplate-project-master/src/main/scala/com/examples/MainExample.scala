@@ -8,17 +8,20 @@ import breeze.linalg.{ Vector, DenseVector }
 import java.util.Random
 import scala.math.exp
 import scala.math.log
-import org.apache.log4j.Level
+import org.apache.log4j.PropertyConfigurator
 import java.io.PrintWriter
 import java.io.File
 import breeze.linalg.SparseVector
 import scala.collection.mutable.ArrayBuffer
+import org.apache.spark.mllib.rdd.RDDFunctions._
+//import com.github.fommil.netlib.{NativeSystemBLAS, NativeRefBLAS}
 
 object MainExample {
 	val D = 39 // Number of dimensions
 	val N = 1048576
 	val rand = new Random(42)
 
+//TODO : Serializable ? 
 case class DataPoint(x: Vector[Double], y: Double)
 
 def parsePoint(line: String): DataPoint = {
@@ -188,8 +191,35 @@ def parseLineCriteoTrain_SV(line:String):DataPoint={
 	    math.log1p(math.exp(-theta.dot(x))) + theta.dot(x)
 	  }
 	}
-
-
+	
+	/*
+	 * Modification sur place de cumGradient
+	 * @return loss
+	 */
+	//TODO : Modif en place de cumGradient
+	def calculGradEtLoss(x:Vector[Double], y:Double, theta:Vector[Double], cumGradient:Vector[Double]):(Vector[Double], Double)={
+	  val margin = -1.0 * theta.dot(x)
+	  cumGradient += x * ((1.0/ (1.0 + math.exp(margin))) - y)
+	  val loss = 
+	  	if(y>0){
+	  		math.log1p(math.exp(margin))
+	  	}
+	  	else{
+	  		math.log1p(math.exp(margin))-margin
+	  	}
+	  return (cumGradient, loss)
+	}
+	
+	/**
+	 * @param str : String to write
+	 * @param file: path to file (to write in)
+	 * 
+	 * Writing Format : Tab separated value
+	 * Numero_du_test	nb_Executants	pourcentDuDataset	Nb_Itérations	
+	 */
+	def myWritingFunc(str: String, file:String):Unit={
+	  
+	}
 
 
 	def main(arg: Array[String]) {
@@ -200,76 +230,50 @@ def parseLineCriteoTrain_SV(line:String):DataPoint={
 	   * arg2 = nb executants
 	   * arg3 = pourcent du dataset en training (le reste est utilisé en test)
 	   * arg4 = nombre iterations
-	   * arg4 = miniBatchSize (entre 0 et 1)
-	   * arg5 = pas
+	   * arg5 = miniBatchSize (entre 0 et 1)
+	   * arg6 = pas
+	   * 
 	   */
-	    var response = "Test n°"+arg(1)+" avec "+arg(2)+" executants."
-		//var response = ""
+		
 		var sec = System.currentTimeMillis()
 		var secStart = System.currentTimeMillis()
-		var line = "Time in millis at the start: "+sec
-		println(line)
-		response+="\n"+line
-
-
-		Logger.getLogger("org").setLevel(Level.WARN)
-		Logger.getLogger("akka").setLevel(Level.WARN)
-		Logger.getLogger("spark").setLevel(Level.WARN)
-
-		var secTemp = System.currentTimeMillis()
-		sec=secTemp
+		println("Time in millis at the start: "+sec)
 		
-		val pathToFiles = arg(0) // "../../../Bureau/PRIM/train.txt" //"ex2data1.txt" etc...
+		//TO CHANGE !
+		PropertyConfigurator.configure("/home/martin/spark-1.2.0/conf")		
+		println("On choisit le bon fichier de configuration pour le logger")
+		
+		
+		val pathToFiles = arg(0)
 		println("Le programme commence")
-
-		val conf = new SparkConf().setAppName("test")
-		println("Bonne mise en place du SparkConf")
-		//conf.setMaster("yarn-client")
-		println("Bon set du master pour le SparkConf")
-		val sc = new SparkContext(conf)
-		println("Bonne mise en place du contexte spark")
 		
-		secTemp = System.currentTimeMillis()
-		line="On met spark en place en "+(secTemp-sec)+" millisecondes"
-		println(line)
-		response+="\n"+line
-		sec=secTemp
+		val conf = new SparkConf().setAppName("SGD test on Criteo Dataset").setMaster("local[*]")
+		val sc = new SparkContext(conf)
+	    println("Bonne mise en place du SparkContext")
 
+	    sec = System.currentTimeMillis()
+		//Getting and Parsing Data
 		val percentData = arg(3).toDouble
 		val splits  = sc.textFile(pathToFiles).map(parseLineCriteoTrain_DV).randomSplit(Array(percentData, 1.0-percentData), 1L)
 		val points = splits(0).cache()
 		val test = splits(1)
 		
 		//data=data.zipWithIndex.filter(x => x._2 >= 1).map(x => x._1) 
-		println("Bon chargement des données")
+		println("Bon chargement des données : "  + (System.currentTimeMillis()-sec))
 		
-		secTemp = System.currentTimeMillis()
-		line="On charge les données en "+(secTemp-sec)+" millisecondes"
-		println(line)
-		response+="\n"+line
-		sec=secTemp
-
-		secTemp = System.currentTimeMillis()
-		line="On parse les données en "+(secTemp-sec)+" millisecondes"
-		println(line)
-		response+="\n"+line
-		sec=secTemp
-		
-		val ITERATIONS = 10
+		val ITERATIONS = arg(4).toInt
+		sec = System.currentTimeMillis()
 		val n = points.count()
+		val countAndCache = System.currentTimeMillis()- sec
+		println("Count and Cache des données : " + countAndCache)
+		
 		val nor: Double = 1.0 / n
 		//var lips = points.map(p => p.x.dot(p.x)).reduce(_ + _)
 		//lips = lips * 4 * nor
 		//val pasIdeal = 1.0 / lips
-		val pas = java.lang.Math.pow(10,-4)
+		val pas = arg(6).toDouble
 		
 		println("Pas = " + pas)
-		
-		secTemp = System.currentTimeMillis()
-		line="On calcule le pas idéal en "+(secTemp-sec)+" millisecondes"
-		println(line)
-		response+="\n"+line
-		sec=secTemp
 		
 		
 		// Initialize w to a random or zero value
@@ -307,18 +311,57 @@ def parseLineCriteoTrain_SV(line:String):DataPoint={
 //			}
 			
 		val lossHistory = new ArrayBuffer[Double](ITERATIONS)
+		val timeHistory = new ArrayBuffer[Double](ITERATIONS)
+		
 		//var numberOfMistakes: Int = 0
 		//Ici on commence la boucle qui permet de calculer le classifieur
 		
+		val sampleSize = arg(5).toDouble
+		require(n * sampleSize >= 1, s"Size of sample too small : got $sampleSize for $n training examples" )
+		
+		
 		for (i <- 1 to ITERATIONS) {
-		  val broadcastW = points.context.broadcast(w)
+		  var secDebutIter = System.currentTimeMillis()
+		  //Broadcast the weights vector :
+		  val bcW = points.context.broadcast(w);
 		  
-			val gradient = points.map { p =>
-			p.x * ((hypothesis(w, p.x) - p.y) * n)
-			}.reduce(_ + _) 
-			w -= gradient * pas
+		  /**
+		   * @param c : un triplet (gradient:Vector[Double], loss:Double, count:Long)
+		   * @param v : un DataPoint
+		   * 
+		   * @return c 'like' object
+		   */
+		   
+		  val seqOp = (c:(DenseVector[Double],Double, Long),v:DataPoint) => {
+			  val (newGrad, loss) =  calculGradEtLoss(v.x, v.y, bcW.value, c._1)
+			  (newGrad.toDenseVector, c._2 + loss, c._3 +1)
+		  }
+		  
+		  /**
+		   * Merge two c 'like' object (cf. au dessus)
+		   */
+		  val combOp = (c1:(DenseVector[Double], Double, Long), c2:(DenseVector[Double], Double, Long))=>{
+			  (c1._1+ c2._1, c1._2 + c2._2, c1._3 + c2._3)
+		  }
+		  
+		  /**
+		   * Usage of "sample" method
+		   * points.sample(withReplacement, fraction, seed)
+		   */
+		  
+		  //Depth = 2 is default value. Try other ones ? 
+		  val (gradientSum, lossSum, miniBatchSize) = points.sample(false, sampleSize, seed=i.toLong)
+			.treeAggregate(DenseVector.zeros[Double](bcW.value.size), 0.0, 0L)(seqOp, combOp, depth=2)
+			
+//			.map { p =>
+//			p.x * ((hypothesis(w, p.x) - p.y) * n)
+//			}.reduce(_ + _) 
+		  lossHistory.append(lossSum/miniBatchSize)
+		  val stepSize = -pas/math.sqrt(i)
+		   w += (gradientSum/miniBatchSize.toDouble) * stepSize
+			
 
-
+		   timeHistory.append((System.currentTimeMillis()-secDebutIter)/1000.0)
 		}
 //		val indexKey = points.map { case (k, v) => (v, k) }
 //		for (s<-1 to ((n/nfolds)-1).toInt){
