@@ -14,6 +14,9 @@ import java.io.File
 import breeze.linalg.SparseVector
 import scala.collection.mutable.ArrayBuffer
 import org.apache.spark.mllib.rdd.RDDFunctions._
+import org.apache.commons.collections.Buffer
+import java.io.BufferedWriter
+import java.io.FileWriter
 //import com.github.fommil.netlib.{NativeSystemBLAS, NativeRefBLAS}
 
 object MainExample {
@@ -215,7 +218,7 @@ def parseLineCriteoTrain_SV(line:String):DataPoint={
 	 * @param file: path to file (to write in)
 	 * 
 	 * Writing Format : Tab separated value
-	 * Numero_du_test	nb_Executants	pourcentDuDataset	Nb_Itérations	
+	 * Numero_du_test	nb_Executants	pourcentDuDataset	Nb_Itérations	sampleSize	TempsCount_Cache	TempsMoyItération	TempsTot
 	 */
 	def myWritingFunc(str: String, file:String):Unit={
 	  
@@ -232,22 +235,22 @@ def parseLineCriteoTrain_SV(line:String):DataPoint={
 	   * arg4 = nombre iterations
 	   * arg5 = miniBatchSize (entre 0 et 1)
 	   * arg6 = pas
-	   * 
+	   * arg7 = pathTofileToWrite
 	   */
 		
+		var strToWrite = arg(1)+ "\t" + arg(2) + "\t" + arg(3) + "\t" + arg(4) + "\t" + arg(5) + "\t"
 		var sec = System.currentTimeMillis()
-		var secStart = System.currentTimeMillis()
+		val secStart = System.currentTimeMillis()
 		println("Time in millis at the start: "+sec)
 		
-		//TO CHANGE !
-		PropertyConfigurator.configure("/home/martin/spark-1.2.0/conf")		
+		//TO CHANGE : path to conf file
+		PropertyConfigurator.configure("/home/martin/spark-1.2.0/conf/log4j.properties")		
 		println("On choisit le bon fichier de configuration pour le logger")
 		
 		
-		val pathToFiles = arg(0)
-		println("Le programme commence")
-		
-		val conf = new SparkConf().setAppName("SGD test on Criteo Dataset").setMaster("local[*]")
+		val pathToFiles = arg(0)		
+		val conf = new SparkConf().setAppName("SGD test on Criteo Dataset")
+		conf.setMaster("local[*]")
 		val sc = new SparkContext(conf)
 	    println("Bonne mise en place du SparkContext")
 
@@ -258,70 +261,38 @@ def parseLineCriteoTrain_SV(line:String):DataPoint={
 		val points = splits(0).cache()
 		val test = splits(1)
 		
-		//data=data.zipWithIndex.filter(x => x._2 >= 1).map(x => x._1) 
 		println("Bon chargement des données : "  + (System.currentTimeMillis()-sec))
 		
 		val ITERATIONS = arg(4).toInt
 		sec = System.currentTimeMillis()
 		val n = points.count()
 		val countAndCache = System.currentTimeMillis()- sec
+		strToWrite += countAndCache + "\t"
 		println("Count and Cache des données : " + countAndCache)
 		
 		val nor: Double = 1.0 / n
-		//var lips = points.map(p => p.x.dot(p.x)).reduce(_ + _)
-		//lips = lips * 4 * nor
-		//val pasIdeal = 1.0 / lips
 		val pas = arg(6).toDouble
 		
 		println("Pas = " + pas)
 		
-		
 		// Initialize w to a random or zero value
 		var w = DenseVector.fill(D+1){0.0}
-//		val pointsWithIndex = points.zipWithIndex //On attribue un indice à chaque point
-//		println(pointsWithIndex.first)
 		
-		secTemp = System.currentTimeMillis()
-		line="On indice les données en "+(secTemp-sec)+" millisecondes"
-		println(line)
-		response+="\n"+line
-		sec=secTemp
-		
-//		val nfolds = 5
-//		var idx = List.range(0,n)
-//		idx=util.Random.shuffle(idx)
-		
-		
-		secTemp = System.currentTimeMillis()
-		line="On finit l'initialisation en "+(secTemp-secStart)+" millisecondes"
-		println(line)
-		response+="\n"+line
-		sec=secTemp
-
-		
-		
-		//Ici on commence la boucle qui va permettre de laisser à chaque fois un fold de côté : celui indicé par j
-//		for (j <- 1 to nfolds) {
-//			var fold : List[Int]=List()
-//			for (s<-1 to ((n/nfolds)-1).toInt){
-//			  
-//			  var id = idx.apply((((j-1)*n/nfolds)+s).toInt).toInt
-//			  fold = fold++List[Int](id)
-//			  
-//			}
-			
+		//To be plotted	
 		val lossHistory = new ArrayBuffer[Double](ITERATIONS)
 		val timeHistory = new ArrayBuffer[Double](ITERATIONS)
 		
-		//var numberOfMistakes: Int = 0
-		//Ici on commence la boucle qui permet de calculer le classifieur
-		
 		val sampleSize = arg(5).toDouble
+		
 		require(n * sampleSize >= 1, s"Size of sample too small : got $sampleSize for $n training examples" )
 		
-		
+		/**
+		 * TODO/TO Try: gradient = sc.aggregate ? 
+		 */
 		for (i <- 1 to ITERATIONS) {
-		  var secDebutIter = System.currentTimeMillis()
+		  println("Debut de l'iteration " + i)
+		  val secDebutIter = System.currentTimeMillis()
+		  
 		  //Broadcast the weights vector :
 		  val bcW = points.context.broadcast(w);
 		  
@@ -331,7 +302,6 @@ def parseLineCriteoTrain_SV(line:String):DataPoint={
 		   * 
 		   * @return c 'like' object
 		   */
-		   
 		  val seqOp = (c:(DenseVector[Double],Double, Long),v:DataPoint) => {
 			  val (newGrad, loss) =  calculGradEtLoss(v.x, v.y, bcW.value, c._1)
 			  (newGrad.toDenseVector, c._2 + loss, c._3 +1)
@@ -352,43 +322,29 @@ def parseLineCriteoTrain_SV(line:String):DataPoint={
 		  //Depth = 2 is default value. Try other ones ? 
 		  val (gradientSum, lossSum, miniBatchSize) = points.sample(false, sampleSize, seed=i.toLong)
 			.treeAggregate(DenseVector.zeros[Double](bcW.value.size), 0.0, 0L)(seqOp, combOp, depth=2)
-			
-//			.map { p =>
-//			p.x * ((hypothesis(w, p.x) - p.y) * n)
-//			}.reduce(_ + _) 
-		  lossHistory.append(lossSum/miniBatchSize)
+		  
 		  val stepSize = -pas/math.sqrt(i)
-		   w += (gradientSum/miniBatchSize.toDouble) * stepSize
+		  w += (gradientSum/miniBatchSize.toDouble) * stepSize
 			
-
-		   timeHistory.append((System.currentTimeMillis()-secDebutIter)/1000.0)
+//		  Append Loss And Time of this iteration :
+		  // WARNING : Loss is calculated on the data sample chosen ! Not on whole dataset !
+		  lossHistory.append(lossSum/miniBatchSize)
+		  timeHistory.append((System.currentTimeMillis()-secDebutIter)/1000.0)
 		}
-//		val indexKey = points.map { case (k, v) => (v, k) }
-//		for (s<-1 to ((n/nfolds)-1).toInt){
-//			val dataToTest = indexKey.lookup(fold.apply(s-1))
-//					if (decision(hypothesis(w, dataToTest(0).x)) != dataToTest(0).y) numberOfMistakes += 1
-//		}
-			
-//		println("For the "+ j +"th fold we have "+numberOfMistakes+" mistakes")	
-		//}
 		
-		secTemp = System.currentTimeMillis()
-		line="La cross-validation en 5 folds prend "+(secTemp-sec)+" millisecondes"
-		println(line)
-		response+="\n"+line
-		sec=secTemp
-		
+		//Adding Temps Moyen Iteration : 
+		strToWrite += timeHistory.reduce(_+_)/ITERATIONS.toDouble + "\t"
 
 		sc.stop()
 		
-		secTemp = System.currentTimeMillis()
-		line="Le programme prend "+(secTemp-secStart)+" millisecondes"
-		println(line)
-		response+="\n"+line
+		//Total time of program
+		val totalTime = System.currentTimeMillis()-secStart
+		strToWrite += totalTime
 		
-		val writer = new PrintWriter(new File("test"+arg(1)+"_"+arg(2)+".txt" ))
-
-        writer.write(response)
+		val writer = new PrintWriter(new BufferedWriter(new FileWriter(arg.last, true)))
+		
+		
+        writer.write(strToWrite)
         writer.close()
 		
 		
