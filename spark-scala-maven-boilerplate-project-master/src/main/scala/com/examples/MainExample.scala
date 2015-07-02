@@ -5,6 +5,7 @@ import org.apache.spark.SparkContext._
 import org.apache.spark.SparkConf
 import org.apache.log4j.Logger
 import breeze.linalg.{ Vector, DenseVector }
+import breeze.linalg.Vector._
 import java.util.Random
 import scala.math.exp
 import scala.math.log
@@ -18,6 +19,8 @@ import org.apache.commons.collections.Buffer
 import java.io.BufferedWriter
 import java.io.FileWriter
 import org.apache.spark.partial.MeanEvaluator
+import org.apache.log4j.Level
+import org.apache.spark.storage.StorageLevel
 //import com.github.fommil.netlib.{NativeSystemBLAS, NativeRefBLAS}
 
 object MainExample {
@@ -131,7 +134,7 @@ def parseLineCriteoTrain_SV(line:String):DataPoint={
 	var myArray = line.split('\t')
 	myArray = completer(myArray, 40)
 	val label = myArray(0)
-	//Get rid of first (label) and second (Id) element : 
+	//Get rid of first (label) element and add intercept : 
 	val myArray2: Array[(Int,Double)] = ("1"+:myArray.tail).zipWithIndex
 		.filter(x => if (x._2 >0 && x._2 < 14){
 		  !(x._1.isEmpty) && !(x._1.toInt==0)
@@ -213,6 +216,23 @@ def parseLineCriteoTrain_SV(line:String):DataPoint={
 	  	}
 	  return (cumGradient, loss)
 	}
+	
+	/**
+	 * Modif en place de cumGradient ! 
+	 * @return loss
+	 */
+	def calculGradEtLossInPlace(x:Vector[Double], y:Double, weights:Vector[Double], cumGradient:Vector[Double]):Double={
+	  val margin = -1.0 * weights.dot(x)
+	  cumGradient += x * ((1.0/ (1.0 + math.exp(margin))) - y)
+	  val loss = 
+	  	if(y>0){
+	  	  if(margin>700) margin else math.log1p(math.exp(margin))
+	  	}
+	  	else{
+	  	  if(margin>700) 0 else math.log1p(math.exp(margin))-margin
+	  	}
+	  return loss
+	}
 
 
 	/**
@@ -223,10 +243,14 @@ def parseLineCriteoTrain_SV(line:String):DataPoint={
 	 * #Iteration
 	 * miniBatchSize
 	 * Count_Cache
+	 * Pas
 	 * TpsMoySGD
+	 * wFinal
 	 * Score
 	 * TpsScore
 	 * TpsTot
+	 * Loss
+	 * #RealNumExec
 	 */
 	def main(arg: Array[String]) {
 	  /*
@@ -240,27 +264,66 @@ def parseLineCriteoTrain_SV(line:String):DataPoint={
 	   * arg6 = pas
 	   * arg7 = pathTofileToWrite
 	   * arg8 = path to conf file
+	   * //Not YET : arg9 = dense/sparse to know which 
 	   */
-		
 		var strToWrite = arg(1)+ "\t" + arg(2) + "\t" + arg(3) + "\t" + arg(4) + "\t" + arg(5) + "\t"
 		var sec = System.currentTimeMillis()
 		val secStart = System.currentTimeMillis()
-		println("Time in millis at the start: "+sec)
+		println("Time in millis at the start: "+ sec )
 		
 		PropertyConfigurator.configure(arg(8))		
 		println("On choisit le bon fichier de configuration pour le logger")
-		
+		Logger.getLogger("org").setLevel(Level.WARN)
+		Logger.getLogger("akka").setLevel(Level.WARN)
+		Logger.getLogger("spark").setLevel(Level.WARN)
 		
 		val pathToFiles = arg(0)		
 		val conf = new SparkConf().setAppName("SGD test on Criteo Dataset")
-		//conf.setMaster("local[4]")
+		conf.setMaster("local[*]")
 		val sc = new SparkContext(conf)
 	    println("Bonne mise en place du SparkContext")
 
 	    sec = System.currentTimeMillis()
 		//Getting and Parsing Data
 		val percentData = arg(3).toDouble
-		val splits  = sc.textFile(pathToFiles).map(parseLineCriteoTrain_DV).randomSplit(Array(percentData, 1.0-percentData), 1L)
+		val data = sc.textFile(pathToFiles).map(parseLineCriteoTrain_DV)
+		
+//		//Normalize : X devient (X - moyenne)/ecartType
+//		val seqOp = (c:(DenseVector[Double], DenseVector[Double], scala.Long), v:DataPoint) => {
+//		  ((c._1 + (v.x :* v.x)).toDenseVector, (c._2 + v.x).toDenseVector, c._3 + 1L)
+//		  }
+//		val combOp = (c1:(DenseVector[Double], DenseVector[Double], scala.Long),c2:(DenseVector[Double], DenseVector[Double], scala.Long)) => {
+//		  ((c1._1+ c2._1).toDenseVector, (c1._2 + c2._2).toDenseVector, c1._3 + c2._3)
+//		  }
+//		val featureSize = data.first.x.length
+//		val (carre, somme, compte) = data.treeAggregate((DenseVector.zeros[Double](featureSize),DenseVector.zeros[Double](featureSize), 0L))(seqOp, combOp, depth=2)
+//		
+//		val moyenne = somme/compte.toDouble
+//		println(moyenne)
+//		println()
+//		moyenne.foreach(println)
+//		readLine("C'est bon pour la moyenne ? > ")
+//		
+//		val esperanceAuCarre = moyenne :* moyenne
+//		val esperanceDesCarres = carre/compte.toDouble
+//		val unSurEcartType = (esperanceDesCarres - esperanceAuCarre).map(x => 1/math.sqrt(x))
+//		println(unSurEcartType)
+//		println()
+//		unSurEcartType.foreach(println)
+//		readLine("C'est bon pour l ecart type ? > ")
+//		//Fin du calcul de moyenne et variance
+		
+		val moyenne = DenseVector(0.0, 19.68338822751884, 1060.0243277266534, 213.71905094558392, 60.48550877925574, 93288.07342920362, 904.9704152542275, 162.9635080391697, 133.10426410709087, 1023.8104323290413, 39.20541710858735, 271.98656512411253, 26.100660468858873, 653.7891238244023, 377140.9568311002, 558866.4644557686, 495925.48345359316, 517844.74182640255, 654639.8437000095, 596730.9672947901, 527810.2080114672, 537579.2927661728, 396012.4661558111, 462807.3633273086, 552089.6490133194, 493195.7586611018, 510132.5801904891, 629410.997063303, 506642.9792986425, 480890.5903386074, 433187.912550828, 547976.9410041099, 417267.29874648066, 426274.2016359204, 503566.86781733326, 44882.014297320646, 600825.0935555688, 527790.0450599956, 248032.57627932887, 283052.83741375036)
+		val unSurEcartType = DenseVector(1.0, 0.013894925080291155, 2.5662055294567383E-4, 2.8339745670567904E-4, 0.011894208476958141, 6.034119443579218E-6, 3.2574885323666996E-4, 0.0015456354767289728, 0.00599255348330285, 4.617591909947344E-4, 0.016152671698484077, 0.0019538264513617575, 0.003631438822274205, 6.777804392986884E-4, 2.857082166073669E-6, 3.5396077571695426E-6, 3.275430613730722E-6, 3.168434992558608E-6, 3.6476741965059343E-6, 2.954374362090143E-6, 3.240049523339526E-6, 9.090096818218723E-6, 5.221330739173902E-6, 3.5458017789602418E-6, 3.440890774475954E-6, 3.3040770266970405E-6, 3.5028807538341923E-6, 8.903436151478599E-6, 3.3535160649341355E-6, 3.2038067848241315E-6, 4.056320861202199E-6, 3.238682897454082E-6, 2.370370899893361E-6, 2.5891628592515156E-6, 3.13978080585371E-6, 1.0881329046544433E-5, 4.332623640005158E-6, 3.3402524223879458E-6, 3.538401566493884E-6, 3.0575447701419923E-6)
+
+		println(data.first)
+		//On modifie les donnees : 
+		val madata = data.map(point => {
+		  DataPoint((point.x-moyenne):*unSurEcartType, point.y)
+		})
+		println(madata.first)
+		
+		val splits = data.randomSplit(Array(percentData, 1.0-percentData), seed = arg(1).toLong)
 		val points = splits(0).cache()
 		val test = splits(1)
 		
@@ -273,21 +336,33 @@ def parseLineCriteoTrain_SV(line:String):DataPoint={
 		strToWrite += countAndCache + "\t"
 		println("Count and Cache des données : " + countAndCache)
 		
+		println(points.first())
+		
 		val nor: Double = 1.0 / n
 		val pas = arg(6).toDouble
 		
 		println("Pas = " + pas)
+		strToWrite += pas + "\t"
 		
 		// Initialize w to a random or zero value
+		/* 75% : 
+		 * new DenseVector(Array(0.0,3.881703955986748E-4,1.9335332365441627E-5,1.0138141939316937E-5,-1.4502573629561445E-4,-7.566790898207824E-7,-4.82388419435262E-5,-1.9640848465532707E-4,-0.0010870946682300772,2.514586392987897E-5,0.005169099688167095,3.307830682602945E-4,4.344488306671991E-4,-2.5190152580760846E-4,-3.7593616716024554E-8,-3.2040545512755376E-7,-1.4573812058621003E-7,-7.787216278803954E-8,-5.29515075559877E-8,-1.4892550747605822E-7,-1.417940362503122E-7,-4.0122790338387397E-7,-1.6050504602114809E-7,-2.862502675005578E-7,-2.1295958850715176E-8,1.5929298302171992E-7,3.520368256651298E-8,5.951095917389688E-7,1.5372331347809986E-8,-1.1769151481843464E-7,-8.962831290442038E-7,-6.092784795578786E-8,-1.9000811820135775E-7,3.73178998459603E-7,1.1550411749873857E-7,2.5451507051959573E-7,1.6836314926971445E-7,-1.4723843187344443E-7,4.7319254968399345E-8,-2.832392954350416E-7))
+		 */
+		
+		
 		var w = DenseVector.fill(D+1){0.0}
+		val featureSize = D+1
 		
 		//To be plotted	
 		val lossHistory = new ArrayBuffer[Double](ITERATIONS)
 		val timeHistory = new ArrayBuffer[Double](ITERATIONS)
+		val wHistory = new ArrayBuffer[breeze.linalg.DenseVector[Double]](ITERATIONS)
 		
 		val sampleSize = arg(5).toDouble
 		
 		require(n * sampleSize >= 1, s"Size of sample too small : got $sampleSize for $n training examples" )
+		println("miniBatchSize = " + (n*sampleSize))
+		
 		
 		/**
 		 * TODO/TOTry: gradient = sc.aggregate ? 
@@ -305,58 +380,72 @@ def parseLineCriteoTrain_SV(line:String):DataPoint={
 		   * 
 		   * @return c 'like' object
 		   */
-		  val seqOp = (c:(DenseVector[Double],Double, Long),v:DataPoint) => {
-			  val (newGrad, loss) =  calculGradEtLoss(v.x, v.y, bcW.value, c._1)
-			  (newGrad.toDenseVector, c._2 + loss, c._3 +1)
+		  val seqOp = (c:(DenseVector[Double],Double, scala.Long),v:DataPoint) => {
+			  val loss =  calculGradEtLossInPlace(v.x, v.y, bcW.value, c._1)
+			  (c._1, c._2 + loss, c._3 +1)
 		  }
 		  
 		  /**
 		   * Merge two c 'like' object (cf. au dessus)
 		   */
-		  val combOp = (c1:(DenseVector[Double], Double, Long), c2:(DenseVector[Double], Double, Long))=>{
-			  (c1._1+ c2._1, c1._2 + c2._2, c1._3 + c2._3)
+		  val combOp = (c1:(DenseVector[Double], Double, scala.Long), c2:(DenseVector[Double], Double, scala.Long))=>{
+			  ((c1._1+ c2._1).toDenseVector,c1._2 + c2._2, c1._3 + c2._3)
 		  }
 		  
 		  /**
-		   * Usage of "sample" method
+		   * Usage of "sample" method :
 		   * points.sample(withReplacement, fraction, seed)
 		   */
 		  
 		  //Depth = 2 is default value. Try other ones ? 
 		  val (gradientSum, lossSum, miniBatchSize) = points.sample(false, sampleSize, seed=i.toLong)
-			.treeAggregate(DenseVector.zeros[Double](bcW.value.size), 0.0, 0L)(seqOp, combOp, depth=2)
+			.treeAggregate((DenseVector.zeros[Double](featureSize), 0.0, 0L))(seqOp, combOp, depth=2)
 		  
-		  val stepSize = -pas/math.sqrt(i)
+		  val stepSize = -pas /*On ne fait plus la division par racine de i /math.sqrt(i)*/
 		  w += (gradientSum/miniBatchSize.toDouble) * stepSize
 			
 //		  Append Loss And Time of this iteration :
 		  // WARNING : Loss is calculated on the data sample chosen ! Not on whole dataset !
-		  lossHistory.append(lossSum/miniBatchSize)
+		  val loss = lossSum/miniBatchSize.toDouble
+		  println("Loss = " + loss)
+		  lossHistory.append(loss)
 		  timeHistory.append((System.currentTimeMillis()-secDebutIter)/1000.0)
+		  wHistory.append(w.toDenseVector)
+		  		  
 		}
 		
 		//Adding Temps Moyen Iteration : 
 		strToWrite += timeHistory.reduce(_+_)/ITERATIONS.toDouble + "\t"
 
+		//On choisit la moyenne des w pour prédire ! 
+		//On écrit le vecteurs dans le fichier
+		println("On reduce les w !")
+		val wFinal = wHistory.reduce((a,b) => (a+b).toDenseVector)/ITERATIONS.toDouble
+		strToWrite += wFinal.toString() + "\t"
+		val bcLastW = sc.broadcast(wFinal)
+		
 		//Prediction sur test :
+		println("On prédit !")
 		sec = System.currentTimeMillis()
-		val (nbBon, tot) =  test.map(p => (if(decision(hypothesis(w, p.x))==p.y) 1 else 0, 1)).reduce((a,b) => (a._1+ b._1, a._2+b._2))
+		val (nbBon, tot) =  test.map(p => (if(decision(hypothesis(bcLastW.value, p.x))==p.y) 1 else 0, 1)).reduce((a,b) => (a._1+ b._1, a._2+b._2))
 		val score = nbBon.toDouble / tot
 		
 		//Adding the score and time of scoring !
 		strToWrite += score +"\t" + java.lang.String.valueOf(System.currentTimeMillis()-sec)+ "\t"
-		
-		
 		
 		//Total time of program
 		val totalTime = System.currentTimeMillis()-secStart
 		strToWrite += totalTime+"\t"
 		
 		//Write to file
-		val writer = new PrintWriter(new BufferedWriter(new FileWriter(arg.last, true)))
+		val writer = new PrintWriter(new BufferedWriter(new FileWriter(arg(7), true)))
 		
+		strToWrite += lossHistory.mkString("\t")+"\t"
+		strToWrite += "TIME\t"+timeHistory.take(if(ITERATIONS<100) ITERATIONS else 100).mkString("\t")
+		strToWrite += "\t" + (sc.getExecutorMemoryStatus.toArray.length -1)
+		//strToWrite += arg(9)
 		
-        writer.println(strToWrite+"LOSS"+lossHistory.mkString("\t")+"\tTIME\t"+timeHistory.mkString("\t"))
+        writer.println(strToWrite)
         writer.close()
         sc.stop()
 		

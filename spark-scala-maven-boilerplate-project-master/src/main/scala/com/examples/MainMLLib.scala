@@ -20,6 +20,8 @@ import org.apache.spark.mllib.classification.{LogisticRegressionWithSGD, Logisti
 import java.io.PrintWriter
 import java.io.FileWriter
 import java.io.BufferedWriter
+import org.apache.hadoop.hdfs.server.common.Storage
+import org.apache.spark.storage.StorageLevel
 
 object MainMLLib {
 	val D = 39 // Number of dimensions
@@ -169,7 +171,7 @@ def parsePoint(line: String): DataPoint = {
 		var sec = secTot;
 		val pathToFile= args(0)
 		val percentData = args(1).toDouble
-		val descentType = args(2)
+		//val descentType = args(2)
 		val numIter = args(3).toInt
 		var pas = 0.0
 		val N = 1048576
@@ -178,15 +180,16 @@ def parsePoint(line: String): DataPoint = {
 		
 
 		val conf = new SparkConf().setAppName("Test on MLLib")
+		conf.setMaster("local[4]").set("spark.driver.memory", "2g")
 		val sc = new SparkContext(conf)
 
-		Logger.getLogger("org").setLevel(Level.WARN)
-		Logger.getLogger("akka").setLevel(Level.WARN)
-		Logger.getLogger("spark").setLevel(Level.WARN)
+		//Logger.getLogger("org").setLevel(Level.WARN)
+		//Logger.getLogger("akka").setLevel(Level.WARN)
+		//Logger.getLogger("spark").setLevel(Level.WARN)
 
 		val data = sc.textFile(pathToFile).map(parseLineCriteoTrain_LabeledDV)
 		val splits = data.randomSplit(Array(percentData,1.0-percentData), seed=1L)
-		val training = splits(0).cache()
+		val training = splits(0).persist(StorageLevel.MEMORY_ONLY_SER)
 		val test = splits(1)
 		
 		println("Bon chargement des données")
@@ -198,13 +201,14 @@ def parsePoint(line: String): DataPoint = {
 		
 		strToWrite += n + "\t" + tpsCache + "\t"
 
+		println("First : " + training.first())
 		/*
 		 * SGD 
 		 */
 		//if(descentType.equals("SGD")){
 		pas = args(4).toDouble
 		sec = System.currentTimeMillis()
-		val modelLogRegSGD = LogisticRegressionWithSGD.train(training, numIter, pas, 1.0)
+		val modelLogRegSGD = LogisticRegressionWithSGD.train(training, numIter, pas, 0.01)
 		println()
 		val tpsSGD = System.currentTimeMillis() - sec
 		println("Temps d'exec du GD : " + (tpsSGD))
